@@ -1,0 +1,9 @@
+# Build and Temporary files
+*.tmp*
+*.log
+*.pdb
+*.suo
+*.user
+.vs/
+bin/
+obj/
