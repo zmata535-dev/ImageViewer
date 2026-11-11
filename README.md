@@ -28,6 +28,7 @@ A fast, lightweight, and clutter-free Windows desktop image viewer built with C#
 - **Save & Save As**:
   - **Save** (`Ctrl+S`): Overwrites the active file cleanly without file lock conflicts.
   - **Save As** (`Ctrl+Shift+S`): Save to PNG, JPG, BMP, TIFF, GIF with standard Save dialog.
+- **Delete File**: Safely send the current image file to the Windows Recycle Bin with a confirmation dialog (`Delete` key or via right-click pop-up menu), automatically navigating to the next image in the folder.
 - **Subtle HUD Toast**: Non-intrusive floating feedback badge showing zoom levels, rotation, crop sizes, and file position without cluttering the screen.
 - **Drag & Drop**: Drag any image file from File Explorer directly onto the app window to view it.
 
@@ -40,6 +41,7 @@ A fast, lightweight, and clutter-free Windows desktop image viewer built with C#
 | **Open File** | `Ctrl + O` |
 | **Save** | `Ctrl + S` |
 | **Save As** | `Ctrl + Shift + S` |
+| **Delete File** | `Delete` |
 | **Reload Original** | `F5` / `Ctrl + R` |
 | **Copy Image to Clipboard** | `Ctrl + C` |
 | **Image Properties** | `Alt + Enter` |

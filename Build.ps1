@@ -23,6 +23,7 @@ $refs = @(
     "/r:System.Core.dll",
     "/r:System.Drawing.dll",
     "/r:System.Windows.Forms.dll",
+    "/r:Microsoft.VisualBasic.dll",
     "/r:System.Xaml.dll"
 )
 

@@ -55,6 +55,7 @@ namespace CleanImageViewer
         // Context menu items that need dynamic enable/disable
         private MenuItem _menuSave;
         private MenuItem _menuSaveAs;
+        private MenuItem _menuDelete;
         private MenuItem _menuReload;
         private MenuItem _menuCopy;
         private MenuItem _menuProperties;
@@ -247,6 +248,7 @@ namespace CleanImageViewer
             MenuItem openItem = CreateMenuItem("Open File...", "Ctrl+O", delegate { PromptOpenFile(); });
             _menuSave = CreateMenuItem("Save", "Ctrl+S", delegate { SaveCurrentImage(); });
             _menuSaveAs = CreateMenuItem("Save As...", "Ctrl+Shift+S", delegate { SaveCurrentImageAs(); });
+            _menuDelete = CreateMenuItem("Delete File", "Delete", delegate { DeleteCurrentImage(); });
             _menuReload = CreateMenuItem("Reload Original", "F5", delegate { ReloadOriginalImage(); });
             _menuCopy = CreateMenuItem("Copy Image to Clipboard", "Ctrl+C", delegate { CopyImageToClipboard(); });
             MenuItem openFolder = CreateMenuItem("Open Containing Folder", null, delegate { OpenContainingFolder(); });
@@ -255,6 +257,7 @@ namespace CleanImageViewer
             cm.Items.Add(openItem);
             cm.Items.Add(_menuSave);
             cm.Items.Add(_menuSaveAs);
+            cm.Items.Add(_menuDelete);
             cm.Items.Add(_menuReload);
             cm.Items.Add(new Separator());
             cm.Items.Add(_menuCopy);
@@ -349,8 +352,10 @@ namespace CleanImageViewer
             ContextMenu.Opened += delegate
             {
                 bool hasImage = _currentBitmap != null;
+                bool hasFile = !string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath);
                 _menuSave.IsEnabled = hasImage && _isModified;
                 _menuSaveAs.IsEnabled = hasImage;
+                _menuDelete.IsEnabled = hasFile;
                 _menuReload.IsEnabled = hasImage && _isModified;
                 _menuCopy.IsEnabled = hasImage;
                 _menuProperties.IsEnabled = hasImage;
@@ -852,6 +857,69 @@ namespace CleanImageViewer
             }
         }
 
+        public void DeleteCurrentImage()
+        {
+            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath)) return;
+
+            string fileName = Path.GetFileName(_currentFilePath);
+            MessageBoxResult res = MessageBox.Show(this,
+                string.Format("Are you sure you want to send \"{0}\" to the Recycle Bin?", fileName),
+                "Delete File",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (res != MessageBoxResult.Yes) return;
+
+            try
+            {
+                string deletedPath = _currentFilePath;
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                    deletedPath,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+
+                ShowHud("Deleted: " + fileName);
+
+                // Determine next image to show from folder list
+                string nextToShow = null;
+                if (_folderFiles != null && _folderFiles.Count > 1 && _currentFileIndex >= 0)
+                {
+                    if (_currentFileIndex + 1 < _folderFiles.Count)
+                    {
+                        nextToShow = _folderFiles[_currentFileIndex + 1];
+                    }
+                    else if (_currentFileIndex - 1 >= 0)
+                    {
+                        nextToShow = _folderFiles[_currentFileIndex - 1];
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(nextToShow) && File.Exists(nextToShow))
+                {
+                    OpenImageFile(nextToShow);
+                }
+                else
+                {
+                    // No other images left in folder
+                    _currentBitmap = null;
+                    _originalBitmap = null;
+                    _currentFilePath = null;
+                    _isModified = false;
+                    _undoStack.Clear();
+                    _folderFiles.Clear();
+                    _currentFileIndex = -1;
+                    _imageControl.Source = null;
+                    ExitCropMode();
+                    UpdateEmptyState();
+                    UpdateTitle();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not delete file: " + ex.Message, "Delete Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         public void ReloadOriginalImage()
         {
             if (!string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath))
@@ -1019,6 +1087,11 @@ namespace CleanImageViewer
 
             switch (e.Key)
             {
+                case Key.Delete:
+                    DeleteCurrentImage();
+                    e.Handled = true;
+                    break;
+
                 case Key.Right:
                 case Key.PageDown:
                 case Key.Space:
