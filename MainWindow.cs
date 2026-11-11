@@ -236,13 +236,135 @@ namespace CleanImageViewer
 
         private void BuildContextMenu()
         {
-            ContextMenu cm = new ContextMenu
+            string menuStylesXaml = @"
+<ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                    xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <SolidColorBrush x:Key='MenuBg' Color='#202020'/>
+  <SolidColorBrush x:Key='GutterBg' Color='#2F2F2F'/>
+  <SolidColorBrush x:Key='GutterBorder' Color='#3C3C3C'/>
+  <SolidColorBrush x:Key='MenuBorder' Color='#4A4A4A'/>
+  <SolidColorBrush x:Key='ItemHover' Color='#383838'/>
+  <SolidColorBrush x:Key='TextNormal' Color='#FFFFFF'/>
+  <SolidColorBrush x:Key='TextDisabled' Color='#777777'/>
+  <SolidColorBrush x:Key='TextShortcut' Color='#AAAAAA'/>
+  <SolidColorBrush x:Key='SeparatorColor' Color='#383838'/>
+
+  <Style TargetType='ContextMenu'>
+    <Setter Property='Background' Value='{StaticResource MenuBg}'/>
+    <Setter Property='BorderBrush' Value='{StaticResource MenuBorder}'/>
+    <Setter Property='BorderThickness' Value='1'/>
+    <Setter Property='Padding' Value='2'/>
+    <Setter Property='Grid.IsSharedSizeScope' Value='True'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='ContextMenu'>
+          <Border Background='{TemplateBinding Background}'
+                  BorderBrush='{TemplateBinding BorderBrush}'
+                  BorderThickness='{TemplateBinding BorderThickness}'
+                  CornerRadius='4'
+                  Padding='0'>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width='28'/>
+                <ColumnDefinition Width='*'/>
+              </Grid.ColumnDefinitions>
+              <!-- Left vertical stripe / gutter: dark, but noticeably lighter than the #202020 menu background -->
+              <Border Grid.Column='0'
+                      Background='{StaticResource GutterBg}'
+                      BorderBrush='{StaticResource GutterBorder}'
+                      BorderThickness='0,0,1,0'
+                      CornerRadius='4,0,0,4'/>
+              <StackPanel Grid.ColumnSpan='2' IsItemsHost='True' Margin='1,3,1,3'/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style TargetType='Separator'>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='Separator'>
+          <Grid Margin='0,2,0,2' SnapsToDevicePixels='True'>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width='28'/>
+              <ColumnDefinition Width='*'/>
+            </Grid.ColumnDefinitions>
+            <Rectangle Grid.Column='0' Fill='{StaticResource GutterBorder}' Height='1'/>
+            <Rectangle Grid.Column='1' Fill='{StaticResource SeparatorColor}' Height='1'/>
+          </Grid>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style TargetType='MenuItem'>
+    <Setter Property='Foreground' Value='{StaticResource TextNormal}'/>
+    <Setter Property='FontSize' Value='12'/>
+    <Setter Property='FontFamily' Value='Segoe UI'/>
+    <Setter Property='Height' Value='26'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='MenuItem'>
+          <Border x:Name='ItemBorder' Background='Transparent' CornerRadius='2' Margin='2,1,2,1'>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width='24' SharedSizeGroup='IconCol'/>
+                <ColumnDefinition Width='*'/>
+                <ColumnDefinition Width='Auto' SharedSizeGroup='ShortcutCol'/>
+              </Grid.ColumnDefinitions>
+
+              <!-- Checkmark / Icon -->
+              <ContentPresenter x:Name='IconHost' Grid.Column='0' ContentSource='Icon'
+                                HorizontalAlignment='Center' VerticalAlignment='Center'/>
+              <Path x:Name='CheckMark' Grid.Column='0'
+                    Visibility='Collapsed'
+                    Data='M 0 4 L 3 7 L 8 1'
+                    Stroke='{StaticResource TextNormal}'
+                    StrokeThickness='1.5'
+                    HorizontalAlignment='Center'
+                    VerticalAlignment='Center'/>
+
+              <!-- Header Text -->
+              <ContentPresenter Grid.Column='1'
+                                ContentSource='Header'
+                                RecognizesAccessKey='True'
+                                VerticalAlignment='Center'
+                                Margin='8,0,18,0'/>
+
+              <!-- Shortcut Gesture -->
+              <TextBlock Grid.Column='2'
+                         Text='{TemplateBinding InputGestureText}'
+                         Foreground='{StaticResource TextShortcut}'
+                         VerticalAlignment='Center'
+                         Margin='8,0,12,0'/>
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property='IsChecked' Value='True'>
+              <Setter TargetName='CheckMark' Property='Visibility' Value='Visible'/>
+            </Trigger>
+            <Trigger Property='IsHighlighted' Value='True'>
+              <Setter TargetName='ItemBorder' Property='Background' Value='{StaticResource ItemHover}'/>
+            </Trigger>
+            <Trigger Property='IsEnabled' Value='False'>
+              <Setter Property='Foreground' Value='{StaticResource TextDisabled}'/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+</ResourceDictionary>";
+
+            ContextMenu cm = new ContextMenu();
+            try
             {
-                Background = new SolidColorBrush(Color.FromRgb(36, 36, 36)),
-                Foreground = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60)),
-                BorderThickness = new Thickness(1)
-            };
+                ResourceDictionary resDict = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(menuStylesXaml);
+                cm.Resources.MergedDictionaries.Add(resDict);
+            }
+            catch { }
 
             // File Section
             MenuItem openItem = CreateMenuItem("Open File...", "Ctrl+O", delegate { PromptOpenFile(); });
