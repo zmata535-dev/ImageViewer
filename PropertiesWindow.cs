@@ -1,9 +1,11 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -11,6 +13,9 @@ namespace CleanImageViewer
 {
     public class PropertiesWindow : Window
     {
+        [DllImport("dwmapi.dll", PreserveSig = true)]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
         private readonly string _filePath;
         private readonly BitmapSource _bitmap;
         private readonly StringBuilder _allInfoText = new StringBuilder();
@@ -29,6 +34,20 @@ namespace CleanImageViewer
             Background = new SolidColorBrush(Color.FromRgb(32, 32, 32));
             Foreground = Brushes.White;
             FontFamily = new FontFamily("Segoe UI");
+
+            SourceInitialized += delegate
+            {
+                try
+                {
+                    IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                    int useDark = 1;
+                    if (DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int)) != 0)
+                    {
+                        DwmSetWindowAttribute(hwnd, 19, ref useDark, sizeof(int));
+                    }
+                }
+                catch { }
+            };
 
             BuildUI();
         }

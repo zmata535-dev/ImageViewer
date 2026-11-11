@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -69,6 +71,9 @@ namespace CleanImageViewer
         private MenuItem _menuAlwaysOnTop;
         private MenuItem _menuCheckerboard;
 
+        [DllImport("dwmapi.dll", PreserveSig = true)]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
         public MainWindow(string initialFile = null)
         {
             Title = "Clean Image Viewer";
@@ -77,6 +82,11 @@ namespace CleanImageViewer
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             WindowStyle = WindowStyle.SingleBorderWindow;
             ResizeMode = ResizeMode.CanResize;
+
+            SourceInitialized += delegate
+            {
+                EnableDarkTitleBar(new WindowInteropHelper(this).Handle);
+            };
 
             InitStyles();
             BuildUI();
@@ -91,6 +101,22 @@ namespace CleanImageViewer
             {
                 UpdateEmptyState();
             }
+        }
+
+        public static void EnableDarkTitleBar(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return;
+            try
+            {
+                int useImmersiveDarkMode = 1;
+                // DWMWA_USE_IMMERSIVE_DARK_MODE: 20 (Windows 10 18985+ / Windows 11), 19 (Windows 10 1809-1909)
+                int hr = DwmSetWindowAttribute(hwnd, 20, ref useImmersiveDarkMode, sizeof(int));
+                if (hr != 0)
+                {
+                    DwmSetWindowAttribute(hwnd, 19, ref useImmersiveDarkMode, sizeof(int));
+                }
+            }
+            catch { }
         }
 
         private void InitStyles()
