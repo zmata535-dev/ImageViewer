@@ -17,13 +17,22 @@ namespace CleanImageViewer
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
         private readonly string _filePath;
+        private readonly string _zipEntryName;
+        private readonly long _zipEntrySize;
         private readonly BitmapSource _bitmap;
         private readonly StringBuilder _allInfoText = new StringBuilder();
 
         public PropertiesWindow(Window owner, string filePath, BitmapSource bitmap)
+            : this(owner, filePath, null, 0, bitmap)
+        {
+        }
+
+        public PropertiesWindow(Window owner, string zipFilePath, string zipEntryName, long zipEntrySize, BitmapSource bitmap)
         {
             Owner = owner;
-            _filePath = filePath;
+            _filePath = zipFilePath;
+            _zipEntryName = zipEntryName;
+            _zipEntrySize = zipEntrySize;
             _bitmap = bitmap;
 
             Title = "Image & File Properties";
@@ -71,7 +80,8 @@ namespace CleanImageViewer
             };
             TextBlock subText = new TextBlock
             {
-                Text = !string.IsNullOrEmpty(_filePath) ? Path.GetFileName(_filePath) : "Unsaved Image",
+                Text = !string.IsNullOrEmpty(_zipEntryName) ? Path.GetFileName(_zipEntryName) + " [" + Path.GetFileName(_filePath) + "]" :
+                       (!string.IsNullOrEmpty(_filePath) ? Path.GetFileName(_filePath) : "Unsaved Image"),
                 FontSize = 12,
                 Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160)),
                 TextTrimming = TextTrimming.CharacterEllipsis
@@ -118,7 +128,24 @@ namespace CleanImageViewer
                 AddPropertyRow(listPanel, "Alpha / Transparency", hasAlpha ? "Yes" : "No");
             }
 
-            if (!string.IsNullOrEmpty(_filePath) && File.Exists(_filePath))
+            if (!string.IsNullOrEmpty(_zipEntryName))
+            {
+                AddSectionHeader(listPanel, "ZIP ARCHIVE ENTRY");
+                AddPropertyRow(listPanel, "Entry Name", Path.GetFileName(_zipEntryName));
+                AddPropertyRow(listPanel, "Entry Path", _zipEntryName);
+                AddPropertyRow(listPanel, "Entry Size", FormatFileSize(_zipEntrySize));
+                if (!string.IsNullOrEmpty(_filePath) && File.Exists(_filePath))
+                {
+                    FileInfo fi = new FileInfo(_filePath);
+                    AddSectionHeader(listPanel, "ZIP FILE INFORMATION");
+                    AddPropertyRow(listPanel, "Zip File", fi.Name);
+                    AddPropertyRow(listPanel, "Zip Size", FormatFileSize(fi.Length));
+                    AddPropertyRow(listPanel, "Folder", fi.DirectoryName);
+                    AddPropertyRow(listPanel, "Full Path", fi.FullName);
+                    AddPropertyRow(listPanel, "Modified", fi.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss"));
+                }
+            }
+            else if (!string.IsNullOrEmpty(_filePath) && File.Exists(_filePath))
             {
                 FileInfo fi = new FileInfo(_filePath);
                 AddSectionHeader(listPanel, "FILE INFORMATION");

@@ -7,6 +7,7 @@ A fast, lightweight, and clutter-free Windows desktop image viewer built with C#
 ## Key Features
 
 - **Wide Format Support**: Loads and views **SVG** (Scalable Vector Graphics), PNG, JPEG/JPG, BMP, GIF, ICO (multi-resolution / highest detail), TIFF, WebP, WMP, HDP, and all Windows WIC / GDI+ image formats. Vector SVGs are rendered sharp with automatic resolution scaling.
+- **Zip Archive Browsing**: Direct browsing of images inside `.zip` files without needing extraction. Open or drag & drop any `.zip` file to view and navigate images inside it.
 - **Minimalist & Clean Interface**: No permanent menus, ribbon bars, or bottom status bars. Just the clean viewport with a sleek dark background (or toggleable transparency checkerboard) and standard Windows window border.
 - **All Menus on Right-Click**: A comprehensive right-click context menu containing File operations, Folder Navigation, Zoom & View controls, Transformations & Edits, and Window Preferences.
 - **Smooth Zoom & Pan**:

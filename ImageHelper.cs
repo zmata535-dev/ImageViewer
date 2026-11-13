@@ -49,6 +49,21 @@ namespace CleanImageViewer
             }
 
             byte[] bytes = File.ReadAllBytes(path);
+            return LoadImageFromBytes(bytes, ext);
+        }
+
+        public static BitmapSource LoadImageFromBytes(byte[] bytes, string ext)
+        {
+            if (bytes == null || bytes.Length == 0)
+            {
+                throw new ArgumentException("Byte array is empty or null", "bytes");
+            }
+
+            if (string.Equals(ext, ".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                string svgText = System.Text.Encoding.UTF8.GetString(bytes);
+                return RenderSvgContentToBitmapSource(svgText);
+            }
 
             // Attempt 1: WPF native WIC decoder
             try
@@ -148,6 +163,11 @@ namespace CleanImageViewer
         private static BitmapSource RenderSvgToBitmapSource(string svgPath)
         {
             string svgText = File.ReadAllText(svgPath);
+            return RenderSvgContentToBitmapSource(svgText);
+        }
+
+        public static BitmapSource RenderSvgContentToBitmapSource(string svgText)
+        {
             Point naturalSize = ParseSvgDimensions(svgText);
 
             double targetW = naturalSize.X;

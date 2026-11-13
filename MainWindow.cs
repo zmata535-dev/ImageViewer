@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,6 +41,12 @@ namespace CleanImageViewer
         // Navigation State
         private List<string> _folderFiles = new List<string>();
         private int _currentFileIndex = -1;
+
+        // Zip Archive State
+        private bool _isZipMode = false;
+        private string _currentZipFilePath = null;
+        private string _currentZipEntryName = null;
+        private byte[] _currentZipEntryBytes = null;
 
         // Zoom & Pan State
         private double _scale = 1.0;
@@ -500,8 +507,8 @@ namespace CleanImageViewer
             ContextMenu.Opened += delegate
             {
                 bool hasImage = _currentBitmap != null;
-                bool hasFile = !string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath);
-                _menuSave.IsEnabled = hasImage && _isModified;
+                bool hasFile = !_isZipMode && !string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath);
+                _menuSave.IsEnabled = hasImage && _isModified && !_isZipMode;
                 _menuSaveAs.IsEnabled = hasImage;
                 _menuDelete.IsEnabled = hasFile;
                 _menuReload.IsEnabled = hasImage && _isModified;
@@ -552,8 +559,20 @@ namespace CleanImageViewer
         {
             if (!File.Exists(path)) return;
 
+            string ext = Path.GetExtension(path);
+            if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenZipArchive(path);
+                return;
+            }
+
             try
             {
+                _isZipMode = false;
+                _currentZipFilePath = null;
+                _currentZipEntryName = null;
+                _currentZipEntryBytes = null;
+
                 BitmapSource bs = ImageHelper.LoadImage(path);
                 _originalBitmap = bs;
                 _currentBitmap = bs;
@@ -578,6 +597,127 @@ namespace CleanImageViewer
             catch (Exception ex)
             {
                 MessageBox.Show(this, "Could not open image: " + ex.Message, "Error Opening Image", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        public void OpenZipArchive(string zipPath, string targetEntryName = null)
+        {
+            if (!File.Exists(zipPath)) return;
+
+            try
+            {
+                List<string> imageEntries = new List<string>();
+                using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+                {
+                    foreach (ZipArchiveEntry entry in archive.Entries)
+                    {
+                        if (entry.Length == 0 && string.IsNullOrEmpty(entry.Name)) continue; // Directory entry
+                        string entryExt = Path.GetExtension(entry.FullName);
+                        if (ImageHelper.IsSupportedExtension(entryExt))
+                        {
+                            imageEntries.Add(entry.FullName);
+                        }
+                    }
+                }
+
+                if (imageEntries.Count == 0)
+                {
+                    MessageBox.Show(this, "No supported image files found in zip archive: " + Path.GetFileName(zipPath), "Empty Archive", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                imageEntries.Sort(new NaturalStringComparer());
+
+                int entryIndex = 0;
+                if (!string.IsNullOrEmpty(targetEntryName))
+                {
+                    int found = imageEntries.FindIndex(delegate(string e) {
+                        return string.Equals(e, targetEntryName, StringComparison.OrdinalIgnoreCase);
+                    });
+                    if (found >= 0) entryIndex = found;
+                }
+
+                _isZipMode = true;
+                _currentZipFilePath = zipPath;
+                _folderFiles = imageEntries;
+                _currentFileIndex = entryIndex;
+
+                LoadZipEntryAtIndex(entryIndex);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not read zip archive: " + ex.Message, "Zip Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void LoadZipEntryAtIndex(int index)
+        {
+            if (!_isZipMode || string.IsNullOrEmpty(_currentZipFilePath) || !File.Exists(_currentZipFilePath)) return;
+            if (index < 0 || index >= _folderFiles.Count) return;
+
+            string entryName = _folderFiles[index];
+
+            try
+            {
+                byte[] entryBytes = null;
+                using (ZipArchive archive = ZipFile.OpenRead(_currentZipFilePath))
+                {
+                    ZipArchiveEntry entry = archive.GetEntry(entryName);
+                    if (entry == null)
+                    {
+                        // Case-insensitive match fallback
+                        foreach (ZipArchiveEntry e in archive.Entries)
+                        {
+                            if (string.Equals(e.FullName, entryName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                entry = e;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (entry == null)
+                    {
+                        throw new FileNotFoundException("Entry not found in zip archive: " + entryName);
+                    }
+
+                    using (Stream s = entry.Open())
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        s.CopyTo(ms);
+                        entryBytes = ms.ToArray();
+                    }
+                }
+
+                string entryExt = Path.GetExtension(entryName);
+                BitmapSource bs = ImageHelper.LoadImageFromBytes(entryBytes, entryExt);
+
+                _originalBitmap = bs;
+                _currentBitmap = bs;
+                _currentFilePath = _currentZipFilePath + " > " + entryName;
+                _currentZipEntryName = entryName;
+                _currentZipEntryBytes = entryBytes;
+                _currentFileIndex = index;
+                _isModified = false;
+                _undoStack.Clear();
+
+                ExitCropMode();
+
+                _imageControl.Source = _currentBitmap;
+                _imageControl.Width = _currentBitmap.PixelWidth;
+                _imageControl.Height = _currentBitmap.PixelHeight;
+
+                UpdateEmptyState();
+                Dispatcher.BeginInvoke(new Action(delegate { FitToWindow(); }));
+
+                string countInfo = _folderFiles.Count > 1 ? string.Format(" ({0} of {1})", _currentFileIndex + 1, _folderFiles.Count) : "";
+                string displayLabel = Path.GetFileName(entryName) + " [" + Path.GetFileName(_currentZipFilePath) + "]" + countInfo;
+                ShowHud(displayLabel);
+                UpdateTitle();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not load image from zip: " + ex.Message, "Zip Image Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -623,7 +763,16 @@ namespace CleanImageViewer
                 return;
             }
 
-            string fileName = !string.IsNullOrEmpty(_currentFilePath) ? Path.GetFileName(_currentFilePath) : "Untitled";
+            string fileName;
+            if (_isZipMode)
+            {
+                fileName = Path.GetFileName(_currentZipEntryName) + " [" + Path.GetFileName(_currentZipFilePath) + "]";
+            }
+            else
+            {
+                fileName = !string.IsNullOrEmpty(_currentFilePath) ? Path.GetFileName(_currentFilePath) : "Untitled";
+            }
+
             string modTag = _isModified ? "*" : "";
             int zoomPct = (int)Math.Round(_scale * 100.0);
             int w = _currentBitmap.PixelWidth;
@@ -787,7 +936,14 @@ namespace CleanImageViewer
             if (!CheckUnsavedChangesPrompt()) return;
 
             _currentFileIndex = (_currentFileIndex + 1) % _folderFiles.Count;
-            OpenImageFile(_folderFiles[_currentFileIndex]);
+            if (_isZipMode)
+            {
+                LoadZipEntryAtIndex(_currentFileIndex);
+            }
+            else
+            {
+                OpenImageFile(_folderFiles[_currentFileIndex]);
+            }
         }
 
         public void NavigatePrevious()
@@ -796,7 +952,14 @@ namespace CleanImageViewer
             if (!CheckUnsavedChangesPrompt()) return;
 
             _currentFileIndex = (_currentFileIndex - 1 + _folderFiles.Count) % _folderFiles.Count;
-            OpenImageFile(_folderFiles[_currentFileIndex]);
+            if (_isZipMode)
+            {
+                LoadZipEntryAtIndex(_currentFileIndex);
+            }
+            else
+            {
+                OpenImageFile(_folderFiles[_currentFileIndex]);
+            }
         }
 
         public void NavigateFirst()
@@ -805,7 +968,14 @@ namespace CleanImageViewer
             if (!CheckUnsavedChangesPrompt()) return;
 
             _currentFileIndex = 0;
-            OpenImageFile(_folderFiles[0]);
+            if (_isZipMode)
+            {
+                LoadZipEntryAtIndex(_currentFileIndex);
+            }
+            else
+            {
+                OpenImageFile(_folderFiles[0]);
+            }
         }
 
         public void NavigateLast()
@@ -814,7 +984,14 @@ namespace CleanImageViewer
             if (!CheckUnsavedChangesPrompt()) return;
 
             _currentFileIndex = _folderFiles.Count - 1;
-            OpenImageFile(_folderFiles[_currentFileIndex]);
+            if (_isZipMode)
+            {
+                LoadZipEntryAtIndex(_currentFileIndex);
+            }
+            else
+            {
+                OpenImageFile(_folderFiles[_currentFileIndex]);
+            }
         }
 
         // Transformations
@@ -946,7 +1123,7 @@ namespace CleanImageViewer
         {
             if (_currentBitmap == null) return;
 
-            if (string.IsNullOrEmpty(_currentFilePath))
+            if (_isZipMode || string.IsNullOrEmpty(_currentFilePath))
             {
                 SaveCurrentImageAs();
                 return;
@@ -975,7 +1152,12 @@ namespace CleanImageViewer
             dlg.Filter = "PNG Image (*.png)|*.png|JPEG Image (*.jpg;*.jpeg)|*.jpg;*.jpeg|Bitmap Image (*.bmp)|*.bmp|TIFF Image (*.tif;*.tiff)|*.tif;*.tiff|GIF Image (*.gif)|*.gif|All Files (*.*)|*.*";
             dlg.FilterIndex = 1;
 
-            if (!string.IsNullOrEmpty(_currentFilePath))
+            if (_isZipMode)
+            {
+                dlg.InitialDirectory = !string.IsNullOrEmpty(_currentZipFilePath) ? Path.GetDirectoryName(_currentZipFilePath) : null;
+                dlg.FileName = !string.IsNullOrEmpty(_currentZipEntryName) ? Path.GetFileName(_currentZipEntryName) : "image.png";
+            }
+            else if (!string.IsNullOrEmpty(_currentFilePath))
             {
                 dlg.InitialDirectory = Path.GetDirectoryName(_currentFilePath);
                 dlg.FileName = Path.GetFileName(_currentFilePath);
@@ -990,11 +1172,14 @@ namespace CleanImageViewer
                 try
                 {
                     ImageHelper.SaveImage(_currentBitmap, dlg.FileName);
-                    _currentFilePath = dlg.FileName;
+                    if (!_isZipMode)
+                    {
+                        _currentFilePath = dlg.FileName;
+                        _originalBitmap = _currentBitmap;
+                        ScanFolder(_currentFilePath);
+                    }
                     _isModified = false;
                     _undoStack.Clear();
-                    _originalBitmap = _currentBitmap;
-                    ScanFolder(_currentFilePath);
                     UpdateTitle();
                     ShowHud("Saved as " + Path.GetFileName(dlg.FileName));
                 }
@@ -1070,7 +1255,12 @@ namespace CleanImageViewer
 
         public void ReloadOriginalImage()
         {
-            if (!string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath))
+            if (_isZipMode && !string.IsNullOrEmpty(_currentZipFilePath))
+            {
+                LoadZipEntryAtIndex(_currentFileIndex);
+                ShowHud("Reloaded image from zip");
+            }
+            else if (!string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath))
             {
                 OpenImageFile(_currentFilePath);
                 ShowHud("Reloaded original image");
@@ -1102,11 +1292,12 @@ namespace CleanImageViewer
 
         public void OpenContainingFolder()
         {
-            if (!string.IsNullOrEmpty(_currentFilePath) && File.Exists(_currentFilePath))
+            string targetPath = _isZipMode ? _currentZipFilePath : _currentFilePath;
+            if (!string.IsNullOrEmpty(targetPath) && File.Exists(targetPath))
             {
                 try
                 {
-                    Process.Start("explorer.exe", string.Format("/select,\"{0}\"", _currentFilePath));
+                    Process.Start("explorer.exe", string.Format("/select,\"{0}\"", targetPath));
                 }
                 catch { }
             }
@@ -1117,7 +1308,7 @@ namespace CleanImageViewer
             if (!CheckUnsavedChangesPrompt()) return;
 
             OpenFileDialog dlg = new OpenFileDialog();
-            dlg.Filter = "All Supported Images|*.jpg;*.jpeg;*.jpe;*.jfif;*.png;*.bmp;*.dib;*.gif;*.ico;*.tiff;*.tif;*.webp;*.svg;*.wmp;*.hdp;*.wdp;*.heic;*.avif|SVG Vector Image (*.svg)|*.svg|PNG (*.png)|*.png|JPEG (*.jpg;*.jpeg)|*.jpg;*.jpeg|Bitmap (*.bmp)|*.bmp|Icon (*.ico)|*.ico|TIFF (*.tif;*.tiff)|*.tif;*.tiff|GIF (*.gif)|*.gif|All Files (*.*)|*.*";
+            dlg.Filter = "All Supported Files|*.jpg;*.jpeg;*.jpe;*.jfif;*.png;*.bmp;*.dib;*.gif;*.ico;*.tiff;*.tif;*.webp;*.svg;*.wmp;*.hdp;*.wdp;*.heic;*.avif;*.zip|Zip Archive (*.zip)|*.zip|SVG Vector Image (*.svg)|*.svg|PNG (*.png)|*.png|JPEG (*.jpg;*.jpeg)|*.jpg;*.jpeg|Bitmap (*.bmp)|*.bmp|Icon (*.ico)|*.ico|TIFF (*.tif;*.tiff)|*.tif;*.tiff|GIF (*.gif)|*.gif|All Files (*.*)|*.*";
 
             if (dlg.ShowDialog(this) == true)
             {
@@ -1128,7 +1319,16 @@ namespace CleanImageViewer
         public void ShowPropertiesDialog()
         {
             if (_currentBitmap == null) return;
-            PropertiesWindow pw = new PropertiesWindow(this, _currentFilePath, _currentBitmap);
+            PropertiesWindow pw;
+            if (_isZipMode)
+            {
+                long entrySize = _currentZipEntryBytes != null ? _currentZipEntryBytes.Length : 0;
+                pw = new PropertiesWindow(this, _currentZipFilePath, _currentZipEntryName, entrySize, _currentBitmap);
+            }
+            else
+            {
+                pw = new PropertiesWindow(this, _currentFilePath, _currentBitmap);
+            }
             pw.ShowDialog();
         }
 

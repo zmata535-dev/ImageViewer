@@ -24,6 +24,8 @@ $refs = @(
     "/r:System.Drawing.dll",
     "/r:System.Windows.Forms.dll",
     "/r:Microsoft.VisualBasic.dll",
+    "/r:System.IO.Compression.dll",
+    "/r:System.IO.Compression.FileSystem.dll",
     "/r:System.Xaml.dll"
 )
 
